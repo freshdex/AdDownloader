@@ -1,284 +1,316 @@
-"""This module provides the call to the Meta Ad Library API for ad data retrieval."""
+"""
+This module provides the AdLibAPI class to interact with the Meta Ad Library API.
+It handles fetching ads data based on specified parameters.
+"""
+# AdDownloader/adlib_api.py
 
-import pandas as pd
-from collections.abc import Mapping
 import requests
+import pandas as pd
+import time
 import os
-
-from datetime import datetime
-from AdDownloader.helpers import *
+import datetime
+from rich import print as rprint # For rich console output
+# from rich.progress import track # Optional for later
+# Removed: from .helpers import load_config (as it's not needed here)
 
 class AdLibAPI:
-    """A class representing the Meta Online Ad Library API connection point."""
+    """
+    A class to interact with the Meta Ad Library API.
 
-    def __init__(self, access_token, version = "v20.0", project_name = datetime.now().strftime("%Y%m%d%H%M%S")):
-        """
-        Initialize the AdLibAPI object by providing a valid Meta developer token and a project name.
+    This class provides methods to set parameters for API requests,
+    download ad data, and save it to specified formats.
+    """
+    BASE_URL = 'https://graph.facebook.com/v22.0/ads_archive' # Base URL for the API
+    
+    FIELDS = 'id, ad_delivery_start_time, ad_delivery_stop_time, ad_creative_bodies, ad_creative_link_captions, ad_creative_link_descriptions, ad_creative_link_titles, ad_snapshot_url, beneficiary_payers, languages, page_id, page_name, target_ages, target_gender, target_locations, eu_total_reach, age_country_gender_reach_breakdown'
+    LIMIT = '300' 
 
-        :param access_token: The access token for authentication.
-        :type access_token: str
-        :param version: The version of the Meta Ad Library API. Default is "v18.0".
-        :type version: str
-        :param project_name: The name of the project. Default is the current date and time.
-        :type project_name: str
-        """
-
-        self.version = version
+    def __init__(self, access_token: str, project_name: str = "default_project"):
+        if not access_token:
+            rprint("[red]Error: Access token cannot be empty.[red]")
+            raise ValueError("Access token is required to initialize AdLibAPI.")
+        
         self.access_token = access_token
-        self.base_url = "https://graph.facebook.com/{version}/ads_archive".format(version = self.version)
-        self.fields = None
-        self.request_parameters = {}
-        self.project_name = project_name
-
-        # create logger based on the project name
-        self.logger = configure_logging(project_name)
-
-
-    def fetch_data(self, url, params, page_ids = None, page_number = 1):
-        """
-        Fetch and process data based on the provided URL and parameters.
-
-        :param url: The URL for making the API request.
-        :type url: str
-        :param params: The parameters to include in the API request.
-        :type params: dict
-        :param page_ids: Page IDs for naming output files. Default is None.
-        :type page_ids: str
-        :param page_number: The page number for tracking the progress. Default is 1.
-        :type page_number: int
-        """
-        print("##### Starting reading page", page_number, "#####")
-        self.logger.info(f"Starting reading page {page_number}")
-        response = requests.get(url, params = params)
-        try:
-            data = response.json()
-            
-        except Exception as e:
-            print(f"Error ({type(e).__name__} - {str(e)}) occured on page {page_number}: {response}. Retrying...")
-            self.logger.error(f"Error ({type(e).__name__} - {str(e)}) occured on page {page_number}: {response}. Retrying...")
+        self.project_name = project_name if project_name and project_name.strip() else "default_project"
+        self.params = {
+            'access_token': self.access_token,
+            'fields': self.FIELDS,
+            'limit': self.LIMIT 
+        }
+        self.data_path = f'output/{self.project_name}/ads_data'
+        if not os.path.exists(self.data_path):
             try:
-                # retry calling the API one more time
-                response = requests.get(url, params = params)
-                data = response.json()
-            except Exception as e:
-                print(f"Error ({type(e).__name__} - {str(e)}) occured on page {page_number}: {response}. Finishing the download.")
-                self.logger.error(f"Error ({type(e).__name__} - {str(e)}) occured on page {page_number}: {response}. Finishing the download.")
+                os.makedirs(self.data_path)
+                rprint(f"[green]Created directory: {self.data_path}[green]")
+            except OSError as e:
+                rprint(f"[red]Error creating directory {self.data_path}: {e}[red]")
+                # Decide if this is a critical error that should stop execution
+                raise
+
+    def read_excel_pages_id(self, file_name: str) -> list:
+        rprint(f"[cyan]Method read_excel_pages_id: Attempting to read Excel file: 'data/{file_name}'...[cyan]")
+        page_ids_list = []
+        # Assuming 'data' folder is in the current working directory from where AdDownloader is run
+        # which should be the project root (D:\jackpoteh\AdDownloader)
+        file_path = os.path.join("data", file_name) 
+        
+        rprint(f"[cyan]Method read_excel_pages_id: Calculated full file path: {os.path.abspath(file_path)}[cyan]")
+
+        try:
+            if not os.path.exists(file_path):
+                rprint(f"[red]Method read_excel_pages_id: Error - Excel file '{file_path}' does not exist at the expected location.[red]")
+                return []
+            
+            rprint(f"[yellow]Method read_excel_pages_id: File 'data/{file_name}' exists. Attempting to read with pandas...[yellow]")
+            # This is the potentially slow part
+            df = pd.read_excel(file_path, sheet_name=0) 
+            rprint(f"[green]Method read_excel_pages_id: Pandas has finished reading 'data/{file_name}'. Processing data...[green]")
+            
+            if df.empty:
+                rprint(f"[orange3]Method read_excel_pages_id: Warning - Excel file 'data/{file_name}' is empty after reading.[orange3]")
+                return []
+
+            id_col_name = None
+            # Try to find a column named 'page_id' or 'Page ID' (case-insensitive)
+            for col in df.columns:
+                if str(col).strip().lower() == 'page_id': # Added strip() for column names
+                    id_col_name = col
+                    rprint(f"[cyan]Method read_excel_pages_id: Found 'page_id' column: '{id_col_name}'[cyan]")
+                    break
+            
+            if id_col_name:
+                page_ids_list = df[id_col_name].astype(str).str.strip().dropna().unique().tolist()
+            else:
+                rprint(f"[yellow]Method read_excel_pages_id: No 'page_id' column found. Using first column (index 0) for page IDs.[yellow]")
+                page_ids_list = df.iloc[:, 0].astype(str).str.strip().dropna().unique().tolist()
+            
+            # Filter out any potential empty strings or 'nan' strings that might have resulted from empty cells
+            page_ids_list = [pid for pid in page_ids_list if pid and pid.lower() != 'nan' and pid.strip()]
+            rprint(f"[cyan]Method read_excel_pages_id: Finished processing IDs. Found {len(page_ids_list)} unique, non-empty IDs.[cyan]")
+
+            if page_ids_list:
+                rprint(f"[green]Method read_excel_pages_id: Successfully processed {len(page_ids_list)} unique page IDs from 'data/{file_name}'.[green]")
+            else:
+                rprint(f"[orange3]Method read_excel_pages_id: No valid page IDs extracted from 'data/{file_name}'.[orange3]")
+            
+            return page_ids_list
+
+        except Exception as e:
+            rprint(f"[bold red]Method read_excel_pages_id: An unexpected error occurred: {e}[bold red]")
+            import traceback
+            rprint(traceback.format_exc()) # Print full traceback for debugging
+            return []
+
+
+    def add_parameters(self, ad_reached_countries="NL", ad_type="ALL", search_page_ids=None, 
+                       search_terms=None, ad_delivery_date_min='2023-01-01', 
+                       ad_delivery_date_max=datetime.date.today().strftime('%Y-%m-%d'), limit=None):
+        rprint("[cyan]Method add_parameters: Adding parameters...[cyan]")
+        self.params['ad_reached_countries'] = ad_reached_countries if ad_reached_countries else "NL"
+        self.params['ad_type'] = ad_type if ad_type else "ALL"
+        
+        if search_page_ids:
+            rprint(f"[cyan]Method add_parameters: Processing search_page_ids input: {search_page_ids}[cyan]")
+            if isinstance(search_page_ids, str): 
+                processed_page_ids = self.read_excel_pages_id(search_page_ids)
+                if not processed_page_ids:
+                    rprint(f"[orange3]Method add_parameters: Warning - Proceeding without page IDs as none were loaded from '{search_page_ids}'.[orange3]")
+                    self.params['search_page_ids'] = None 
+                else:
+                    self.params['search_page_ids'] = ','.join(processed_page_ids) 
+            elif isinstance(search_page_ids, list):
+                self.params['search_page_ids'] = ','.join(str(pid) for pid in search_page_ids if str(pid).strip()) # Ensure all are strings and not empty
+            else:
+                rprint(f"[orange3]Method add_parameters: search_page_ids is not a string or list, ignoring: {type(search_page_ids)}[orange3]")
+                self.params['search_page_ids'] = None
+        else:
+             self.params.pop('search_page_ids', None) 
+
+        if search_terms:
+            self.params['search_terms'] = search_terms
+        else:
+            self.params.pop('search_terms', None)
+
+        if self.params.get('search_page_ids') and self.params.get('search_terms'):
+            rprint("[orange3]Method add_parameters: Warning - Both search_page_ids and search_terms provided. API behavior may vary.[orange3]")
+
+        self.params['ad_delivery_date_min'] = ad_delivery_date_min if ad_delivery_date_min else '2023-01-01'
+        self.params['ad_delivery_date_max'] = ad_delivery_date_max if ad_delivery_date_max else datetime.date.today().strftime('%Y-%m-%d')
+        
+        if limit:
+            self.params['limit'] = str(limit) 
+        else:
+            self.params['limit'] = self.LIMIT 
+        rprint("[cyan]Method add_parameters: Parameters updated.[cyan]")
+
+
+    def get_parameters(self) -> dict:
+        return self.params
+
+    def start_download(self, output_format: str = "csv"):
+        all_ads_data = []
+        page_counter = 1
+        data_fetched_successfully = False
+
+        raw_json_dir = os.path.join(self.data_path, 'raw_json_responses')
+        if not os.path.exists(raw_json_dir):
+            try:
+                os.makedirs(raw_json_dir)
+            except OSError as e:
+                rprint(f"[red]Error creating raw JSON directory {raw_json_dir}: {e}[red]")
+                # Potentially stop if this dir is critical
                 return
 
-        # check if there was an error - print the message
-        if "error" in data:
-            print(f"No data on page {page_number}.\nError: {data['error']['message']}.")
-            self.logger.error(f"No data on page {page_number}. Error: {data['error']['message']}.")
-            return
-        # no error but also no data - print the response
-        elif not "data" in data:
-            print(f"No data on page {page_number}: {response}.")
-            self.logger.error(f"No data on page {page_number}: {response}.")
-            return
-        # check if the output json file is empty and return
-        if not bool(data["data"]):
-            print("Page", page_number, "is empty.")
-            self.logger.warning(f"Page {page_number} is empty.")
-            return
-        
-        folder_path = f"output/{self.project_name}/json"
-        # check if the folder exists
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
-        # save the data to a JSON file
-        if page_ids is None:
-            with open(f"{folder_path}/{page_number}.json", "w") as json_file:
-                json.dump(data, json_file, indent = 4)
-        else:
-            with open(f"{folder_path}/{page_ids}_{page_number}.json", "w") as json_file:
-                json.dump(data, json_file, indent = 4)
-        
+        current_params = self.params.copy() 
 
-        # check if there is a next page and retrieve further data
-        if "paging" in data and "next" in data["paging"]:
-            next_page_url = data["paging"]["next"]
-            self.fetch_data(next_page_url, params, page_ids, page_number + 1)
-
-
-    def add_parameters(self, fields = None, ad_reached_countries = 'NL', ad_delivery_date_min = "2023-01-01", ad_delivery_date_max = datetime.today().strftime('%Y-%m-%d'),
-                       search_page_ids = None, search_terms = None, ad_type = "ALL", **kwargs):
-        """
-        Add parameters for the API request. Mandatory parameters are reached countries, start and end date, and either page_ids or search_terms.
-        See available parameters here: https://developers.facebook.com/docs/marketing-api/reference/ads_archive/
-
-        :param fields: The fields to include in the API response. Default is None, fields are retrieved from the created AdLibApi object.
-        :type fields: str
-        :param ad_reached_countries: The reached country for ad targeting. Default is 'NL'.
-        :type ad_reached_countries: str
-        :param ad_delivery_date_min: The minimum start date of ad delivery. Default is "2023-01-01".
-        :type ad_delivery_date_min: str
-        :param ad_delivery_date_max: The maximum start date of ad delivery. Default is the current date.
-        :type ad_delivery_date_max: str
-        :param search_page_ids: The name of the file containing page IDs. Default is None. Complementary with search_terms.
-        :type search_page_ids: str
-        :param search_terms: The search terms for ad filtering, in one string separated by a comma. Default is None. Complementary with search_page_ids.
-        :type search_terms: str
-        :param ad_type: The type of the ads to be retrieved. Default is "ALL", can also be "POLITICAL_AND_ISSUE_ADS".
-        :type ad_type: str
-        :param kwargs**: Add additional parameters for the search query, e.g. "estimated_audience_size_max = 10000"
-        """
-
-        if fields is None:
-            fields = self.get_fields(ad_type)
-            
-        # check if the dates are valid    	
-        if ad_delivery_date_min > datetime.today().strftime('%Y-%m-%d'):
-            ad_delivery_date_min = datetime.today().strftime('%Y-%m-%d')
-            print('Minimum delivery date is greater than the current date. Setting it as the current date.')
-            self.logger.warning('Minimum delivery date is greater than the current date. Setting it as the current date.')
-        
-        if ad_delivery_date_max > datetime.today().strftime('%Y-%m-%d'):
-            ad_delivery_date_max = datetime.today().strftime('%Y-%m-%d')
-            print('Maximum delivery date is greater than the current date. Setting it as the current date.')
-            self.logger.warning('Maximum delivery date is greater than the current date. Setting it as the current date.')
-            
-        if ad_delivery_date_min > ad_delivery_date_max:
-            print('Minimum delivery date is greater than maximum delivery date. Swithching the dates around.')
-            self.logger.warning('Minimum delivery date is greater than maximum delivery date. Swithching the dates around.')
-            temp_min = ad_delivery_date_min
-            ad_delivery_date_min = ad_delivery_date_max
-            ad_delivery_date_max = temp_min
-        
-        params = {
-            "fields": fields,
-            "ad_reached_countries": ad_reached_countries,
-            "ad_type": ad_type,
-            "search_page_ids": None,
-            "search_terms": None,
-            "ad_delivery_date_min": ad_delivery_date_min,
-            "ad_delivery_date_max": ad_delivery_date_max,
-            "limit": "300",
-            "access_token": self.access_token
-        }
-
-        # accept additional parameters through kwargs**
-        params.update(kwargs)
-
-        # search page ids - the file must contain at least one column called page_id
-        if search_page_ids is not None:
-            if is_valid_excel_file(search_page_ids):
-                path = os.path.join("data", search_page_ids)
+        while True:
+            rprint(f"[cyan]##### Starting reading page {page_counter} from API #####[cyan]")
+            try:
+                response = requests.get(self.BASE_URL, params=current_params, timeout=60) 
+                response.raise_for_status() 
+                data = response.json()
+            except requests.exceptions.HTTPError as e:
+                rprint(f"[red]HTTP Error on page {page_counter}: {e.response.status_code} - {e.response.text[:500]}...[red]")
+                api_error_content = {}
                 try:
-                    data = pd.read_excel(path)
-                except:
-                    try:
-                        data = pd.read_csv(path)
-                    except:
-                        print('Unable to load page ids data.')
-                        self.logger.error('Unable to load page ids data.')
-                try:
-                    search_page_ids_list = data['page_id'].astype(str).tolist()
-                    params["search_page_ids"] = search_page_ids_list
-                    self.request_parameters = params
-                except:
-                    print('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
-                    self.logger.error('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
+                    api_error_content = e.response.json()
+                except ValueError: # Handle cases where response is not JSON
+                    pass # rprint above already logged text part
+                if api_error_content.get("error", {}).get("message"):
+                     rprint(f"[red]API Error Message: {api_error_content['error']['message']}[red]")
+                break 
+            except requests.exceptions.Timeout:
+                rprint(f"[red]Request timed out on page {page_counter}. Try increasing timeout or check network.[red]")
+                break
+            except requests.exceptions.RequestException as e:
+                rprint(f"[red]Request failed on page {page_counter}: {e}[red]")
+                break
+            except ValueError as e: # Includes JSONDecodeError
+                rprint(f"[red]Error decoding JSON response on page {page_counter}: {e}[red]")
+                if 'response' in locals() and response is not None: # Check if response object exists
+                    rprint(f"[red]Response content (first 500 chars): {response.text[:500]}...[red]")
+                break
+
+            try:
+                with open(os.path.join(raw_json_dir, f'{self.project_name}_page_{page_counter}.json'), 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+            except Exception as e:
+                rprint(f"[orange3]Warning: Could not save raw JSON for page {page_counter}: {e}[orange3]")
+
+            if data.get('data'): 
+                all_ads_data.extend(data['data'])
+                data_fetched_successfully = True 
+                rprint(f"[green]Fetched {len(data['data'])} ads from page {page_counter}. Total ads so far: {len(all_ads_data)}.[green]")
+                
+                if 'paging' in data and 'next' in data['paging']:
+                    if 'cursors' in data['paging'] and 'after' in data['paging']['cursors']:
+                         current_params['after'] = data['paging']['cursors']['after']
+                         page_counter += 1
+                    else: 
+                         rprint("[yellow]No 'after' cursor in paging information. Assuming end of results by this method.[yellow]")
+                         break 
+                else:
+                    rprint("[yellow]No 'next' page in paging information. Download complete for this query.[yellow]")
+                    break 
             else:
-                print(f"Excel file not found.")
+                rprint(f"[orange3]No data in 'data' field on page {page_counter}.[orange3]")
+                if "error" in data:
+                    rprint(f"[red]API Error: {data['error'].get('message', 'Unknown error')}[red]")
+                elif not data: # Empty response
+                     rprint(f"[orange3]Empty response from API on page {page_counter}.[orange3]")
+                break 
 
-        elif search_terms is not None:
-            params["search_terms"] = search_terms
-            self.request_parameters = params
+            time.sleep(1)
 
-        else:
-            print('You need to specify either pages ids or search terms.')
-            self.logger.warning('You need to specify either pages ids or search terms.')
+        if not data_fetched_successfully:
+            rprint("[red]No ad data was successfully fetched from the API.[red]")
+            return
 
-        self.logger.info(f'You added the following parameters: {self.request_parameters}')
-            
-    
-    def start_download(self, params = None):
-        """
-        Start the download process from the Meta Ad Library API based on the provided parameters.
+        if not all_ads_data:
+            rprint("[orange3]No ad data was collected after processing all pages.[orange3]")
+            return
 
-        :param params: The parameters for the API request. Default is None, parameters are retrieved from the created AdLibApi object.
-        :type params: dict
-        :returns: A dataframe containing the downloaded and processed ad data from the Meta Online Ad Library.
-        :rtype: pandas.Dataframe
-        """
+        df_all_ads = pd.DataFrame(all_ads_data)
+        rprint(f"[green]Total ads collected: {len(df_all_ads)}[green]")
 
-        if params is None:
-            params = self.request_parameters
+        file_basename = os.path.join(self.data_path, f"{self.project_name}_original_data")
+        output_path = ""
 
-        if params["search_terms"] is not None:
-            self.fetch_data(url = self.base_url, params = params, page_number = 1)
-        
-        if params["search_page_ids"] is not None:
-            search_page_ids_list = params["search_page_ids"]
-            for i in range(0, len(search_page_ids_list), 10):                
-                end_index = min(i + 9, len(search_page_ids_list) - 1)
-                print(f"Fetching data starting for indexes [{i},{end_index+1}]")
-                params["search_page_ids"] = str(search_page_ids_list[i:end_index+1])
-
-                # call the function with the initial API endpoint and parameters
-                self.fetch_data(self.base_url, params, page_ids = f"[{i},{end_index}]", page_number = 1)
-        
-        if not os.path.exists(f"output/{self.project_name}/json"):
-            print("JSON files were not downloaded. Try a new request.")
-            self.logger.info("JSON files were not downloaded. Try a new request.")
-            return None
-            
-        nr_json_files = len([file for file in os.listdir(f"output/{self.project_name}/json") if file.endswith('.json')])
-        print(f"Done downloading {nr_json_files} json files for the given parameters.")
-        self.logger.info(f'Done downloading {nr_json_files} json files for the given parameters.')
-        print("Data processing will start now.")
-        self.logger.info('Data processing will start now.')
-
-        # process into excel files:
         try:
-            final_data = transform_data(self.project_name, country = params["ad_reached_countries"], ad_type = params["ad_type"])
-            total_ads = len(final_data)
-            print(f"Done processing and saving ads data for {total_ads} ads for project {self.project_name}.")
-            self.logger.info(f'Done processing and saving ads data for {total_ads} ads for project {self.project_name}.')
-
-            return(final_data)
-
-        except Exception:
-            print("No data was downloaded. Please try a new request.")
-            self.logger.warning('No data was downloaded. Please try a new request.')
+            if output_format == 'csv':
+                output_path = f"{file_basename}.csv"
+                df_all_ads.to_csv(output_path, index=False, encoding='utf-8-sig')
+            elif output_format == 'json':
+                output_path = f"{file_basename}.json"
+                df_all_ads.to_json(output_path, orient='records', indent=4, force_ascii=False)
+            elif output_format == 'xlsx':
+                output_path = f"{file_basename}.xlsx"
+                df_all_ads.to_excel(output_path, index=False, engine='openpyxl')
+            else:
+                rprint(f"[red]Unsupported output format: {output_format}. Defaulting to CSV.[red]")
+                output_path = f"{file_basename}.csv"
+                df_all_ads.to_csv(output_path, index=False, encoding='utf-8-sig')
             
-        # close the logger
-        close_logger(self.logger)
+            if output_path:
+                 rprint(f"[green bold]All ad data saved to {output_path}[green bold]")
+
+        except Exception as e:
+             rprint(f"[red]Error saving data to {output_format} at {output_path}: {e}[red]")
+             rprint(f"[orange3]Attempting to save as CSV fallback...[orange3]")
+             try:
+                 output_path_csv_fallback = f"{file_basename}_fallback.csv"
+                 df_all_ads.to_csv(output_path_csv_fallback, index=False, encoding='utf-8-sig')
+                 rprint(f"[green bold]Fallback data saved to {output_path_csv_fallback}[green bold]")
+             except Exception as fb_e:
+                 rprint(f"[bold red]Failed to save data even as CSV fallback: {fb_e}[bold red]")
 
 
-    def get_parameters(self):
-        """
-        Get the parameters used for the API request (without the access token).
+if __name__ == '__main__':
+    # Example usage (for testing this module directly)
+    if not os.path.exists("data"):
+        os.makedirs("data")
+    dummy_excel_data = {'page_id': ['12345', '67890', ' ', None, 'nan']} # Added more test cases
+    dummy_df = pd.DataFrame(dummy_excel_data)
+    dummy_excel_path = os.path.join("data", "test_pages.xlsx")
+    if not os.path.exists(dummy_excel_path):
+        dummy_df.to_excel(dummy_excel_path, index=False)
+        rprint(f"Created dummy Excel file: {dummy_excel_path}")
 
-        :returns: A dictionary containing the parameters for the API request.
-        :rtype: dict
-        """
-        params = self.request_parameters.copy()
-        # remove the access_token from the copy
-        params.pop("access_token", None)
+    TEST_ACCESS_TOKEN = "YOUR_ACTUAL_ACCESS_TOKEN" 
 
-        return(params)
+    if TEST_ACCESS_TOKEN == "YOUR_ACTUAL_ACCESS_TOKEN":
+        rprint("[bold red]Please replace 'YOUR_ACTUAL_ACCESS_TOKEN' with a real token to test API calls.[bold red]")
+        # Test local file reading without API call
+        rprint("\n--- Testing Excel Reading Locally ---")
+        api_client_local_test = AdLibAPI(access_token="dummy_token_for_local_test", project_name="local_excel_read_test")
+        ids = api_client_local_test.read_excel_pages_id("test_pages.xlsx")
+        rprint(f"IDs read: {ids}")
+        api_client_local_test.add_parameters(search_page_ids="test_pages.xlsx")
+        rprint(f"Parameters after adding page IDs: {api_client_local_test.get_parameters()}")
 
+    else:
+        rprint(f"Using test access token: {TEST_ACCESS_TOKEN[:10]}...") 
+        api_client = AdLibAPI(access_token=TEST_ACCESS_TOKEN, project_name="api_test_project")
+        api_client.add_parameters(
+            search_terms="sustainable products", 
+            ad_reached_countries="US",
+            ad_delivery_date_min="2024-01-01",
+            ad_delivery_date_max="2024-01-15",
+            limit=5
+        )
+        rprint("Parameters for Test 1:")
+        rprint(api_client.get_parameters())
+        # api_client.start_download(output_format="csv") 
+
+        api_client_pages = AdLibAPI(access_token=TEST_ACCESS_TOKEN, project_name="api_test_pages_project")
+        api_client_pages.add_parameters(
+            search_page_ids="test_pages.xlsx", 
+            ad_reached_countries="GB",
+            limit=3
+        )
+        rprint("\nParameters for Test 2 (Page IDs):")
+        rprint(api_client_pages.get_parameters())
+        # api_client_pages.start_download(output_format="json") 
     
-    def clear_parameters(self):
-        """
-        Clear the current list of search parameters.]
-        """
-        self.request_parameters = {}
-        self.logger.warning('Seach parameters removed.')
-    
-
-    def get_fields(self, ad_type):
-        """
-        Get the default fields for the API request, depends on the type of ads to be retrieved (All or Political). For available fields visit https://www.facebook.com/ads/library/api 
-
-        :param ad_type: The type of the ads to be retrieved.
-        :type ad_type: str
-        :returns: A string containing the fields for the API request.
-        :rtype: str
-        """
-        if ad_type == "ALL":
-            return("id, ad_delivery_start_time, ad_delivery_stop_time, ad_creative_bodies, ad_creative_link_captions, ad_creative_link_descriptions, ad_creative_link_titles, ad_snapshot_url, beneficiary_payers, languages, page_id, page_name, target_ages, target_gender, target_locations, eu_total_reach, age_country_gender_reach_breakdown")
-        else:
-            return("id, ad_delivery_start_time, ad_delivery_stop_time, ad_creative_bodies, ad_creative_link_captions, ad_creative_link_descriptions, ad_creative_link_titles, ad_snapshot_url, bylines, currency, delivery_by_region, demographic_distribution, estimated_audience_size, impressions, languages, spend, page_id, page_name, target_ages, target_gender, target_locations")
+    rprint("\nModule direct test finished.")

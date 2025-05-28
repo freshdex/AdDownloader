@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: AdDownloader
-Version: 0.2.10
+Version: 0.2.11
 Summary: A cmd tool for downloading ads and their media content from the Meta Ad Library.
 Author-email: Paula-Alexandra Gitu <paula.gitu@maastrichtuniversity.nl>
 Maintainer-email: Paula-Alexandra Gitu <paula.gitu@maastrichtuniversity.nl>
@@ -696,31 +696,28 @@ Classifier: Topic :: Internet :: WWW/HTTP :: Indexing/Search
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 License-File: LICENSE.txt
-Requires-Dist: click==8.1.3
-Requires-Dist: dash==2.15.0
-Requires-Dist: datetime==5.4
-Requires-Dist: gensim==4.3.2
-Requires-Dist: inquirer3==0.4.0
-Requires-Dist: meson==1.3.1
-Requires-Dist: ninja==1.11.1.1
-Requires-Dist: nltk==3.8.1
-Requires-Dist: numpy==1.26.4
-Requires-Dist: opencv-python==4.9.0.80
-Requires-Dist: openpyxl==3.1.2
-Requires-Dist: pandas==2.0.3
-Requires-Dist: pillow==10.2.0
-Requires-Dist: pytest>=6.2.4
-Requires-Dist: requests==2.31.0
-Requires-Dist: rich==13.6.0
-Requires-Dist: scikit-image==0.22.0
-Requires-Dist: scikit-learn==1.4.1.post1
-Requires-Dist: scipy==1.12
-Requires-Dist: selenium==4.16.0
+Requires-Dist: click>=7.1.2
+Requires-Dist: typer>=0.9.0
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: opencv-python>=4.5.1
+Requires-Dist: openpyxl>=3.0.7
+Requires-Dist: pandas>=1.2.0
+Requires-Dist: Pillow>=8.1.0
+Requires-Dist: requests>=2.25.1
+Requires-Dist: selenium>=3.141.0
 Requires-Dist: setuptools>=43.0.0
-Requires-Dist: textblob==0.17.1
-Requires-Dist: torch==2.2.0
-Requires-Dist: transformers==4.37.2
-Requires-Dist: typer==0.9.0
+Requires-Dist: webdriver-manager>=3.4.2
+Requires-Dist: beautifulsoup4>=4.9.3
+Requires-Dist: urllib3<2.0,>=1.26.5
+Requires-Dist: chromedriver-autoinstaller>=0.3.1
+Requires-Dist: loguru>=0.5.3
+Requires-Dist: tqdm>=4.55.1
+Requires-Dist: pytesseract>=0.3.7
+Requires-Dist: lxml>=4.6.3
+Requires-Dist: cloudscraper>=1.2.58
+Requires-Dist: inquirer3>=0.4.0
+Requires-Dist: rich>=13.6.0
+Dynamic: license-file
 
 # AdDownloader
 AdDownloader is a Python command-line tool designed for downloading ads and their associated media content from the Meta Ad Library. This tool provides an efficient and user-friendly way to access ad data for analysis and research purposes, offering additional analytical functionalities for the ad creatives.
@@ -732,7 +729,9 @@ AdDownloader is a Python command-line tool designed for downloading ads and thei
 * 🔎 Answer questions based on your search target and download ads and their media content.
 * 💡 Use the downloaded ad data for research and analysis of ad campaigns, embedded in a Dashboard.
 
-Below, you can find information about the installing process and basic usage of AdDownloader. For a detailed description of the full features of this package, visit the official [AdDownloader documentation](https://addownloader.readthedocs.io/en/latest/index.html).
+Below, you can find information about the installing process and basic usage of AdDownloader. For a *detailed description* of the full features of this package, visit the official [AdDownloader documentation](https://addownloader.readthedocs.io/en/latest/index.html). Additionally, for an *extensive tutorial* on how to use AdDownloader, check out our step-by-step [video on YouTube](https://youtu.be/WK6eS2dXTbg?si=lR_cMcbyNkdlK915).
+
+If you use AdDownloader in your research or project, please *refer to and cite* our [paper](https://doi.org/10.1016/j.softx.2024.101919).
 
 ## Table of Contents
 - [Introduction](#introduction)

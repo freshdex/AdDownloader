@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+pip-selfcheck.json
+pip-log.txt
+pip-delete-this-directory.txt
+lib/
+lib64/
+include/
+share/
+bin/
+Scripts/ # For Windows venv if you want to be very explicit, though .venv/ usually covers it
+pyvenv.cfg
+.python-version
+
+# Output & Logs
+output/
+logs/
+*.log
+
+# Config files (if they contain secrets or user-specific paths)
+config.json 
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE / Editor specific (examples)
+.vscode/
+.idea/
+*.swp
+*~
+
+# Backup files (like your .old file)
+*.old
+*.bak

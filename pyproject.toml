@@ -3,7 +3,7 @@ name = "AdDownloader"
 # $ pip install AdDownloader
 # And where it will live on PyPI: https://pypi.org/project/AdDownloader/
 
-version = "0.2.11"
+version = "0.2.11" # Consider incrementing for your new version, e.g., "0.2.12.dev0" or for Python 3.13 support "0.3.0"
 authors = [
   {name = "Paula-Alexandra Gitu", email = "paula.gitu@maastrichtuniversity.nl"},
 ]
@@ -11,20 +11,21 @@ maintainers = [
   {name = "Paula-Alexandra Gitu", email = "paula.gitu@maastrichtuniversity.nl"}
 ]
 
-# the description corresponds to the "Summary" metadata field:
 description = "A cmd tool for downloading ads and their media content from the Meta Ad Library."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9" # You can change this to ">=3.11" or ">=3.13" once confirmed stable on 3.13
 license = {file = "LICENSE.txt"}
 keywords = ["CLI tool", "MetaAPI", "AdLibrary", "image scraping"]
 
-# For a list of valid classifiers, see https://pypi.org/classifiers/
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",    
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    # Add these once confirmed working:
+    # "Programming Language :: Python :: 3.12",
+    # "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
@@ -34,49 +35,88 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
 
-# add the necessary packages here
+# Core runtime dependencies.
 dependencies = [
-  "click==8.1.3",
-  "dash==2.15.0",
-  "datetime==5.4",
-  "gensim==4.3.2",
-  "inquirer3==0.4.0",
-  "meson==1.3.1",
-  "ninja==1.11.1.1",
-  "nltk==3.8.1",
-  "numpy==1.26.4",
-  "opencv-python==4.9.0.80",
-  "openpyxl==3.1.2",
-  "pandas==2.0.3",
-  "pillow==11.0.0",
-  "pytest>=6.2.4",
-  "requests==2.31.0",
-  "rich==13.6.0",
-  "scikit-image==0.22.0",
-  "scikit-learn==1.4.1.post1",
-  "scipy==1.12",
-  "selenium==4.16.0",
-  "setuptools>=43.0.0",
-  "textblob==0.17.1",
-  "torch==2.2.0",
-  "transformers==4.37.2",
-  "typer==0.9.0"
+  "click>=7.1.2",             # Typer uses Click
+  "typer>=0.9.0",             # Since AdDownloader/cli.py uses typer.Typer()
+  "numpy>=1.20.0",
+  "opencv-python>=4.5.1",
+  "openpyxl>=3.0.7",
+  "pandas>=1.2.0",
+  "Pillow>=8.1.0",
+  "requests>=2.25.1",
+  "selenium>=3.141.0",
+  "setuptools>=43.0.0",       # For build and pkg_resources if used
+  "webdriver-manager>=3.4.2",
+  "beautifulsoup4>=4.9.3",
+  "urllib3>=1.26.5,<2.0",      # Important constraint
+  "chromedriver-autoinstaller>=0.3.1",
+  "loguru>=0.5.3",
+  "tqdm>=4.55.1",
+  "pytesseract>=0.3.7",
+  "lxml>=4.6.3",
+  "cloudscraper>=1.2.58",
+  "inquirer3>=0.4.0",         # Used in AdDownloader/cli.py for prompts
+  "rich>=13.6.0",             # Used in AdDownloader/cli.py for rprint
+
+  # ---- Potentially Non-Core or Problematic for Initial Setup ----
+  # "scikit-image>=0.18.1",      # Major blocker for Python 3.13 due to build issues / no wheels. Add back if essential and working.
+  # "dash==2.15.0",              # For dashboard, can be an optional dependency
+  # "datetime==5.4",             # This is for the 'DateTime' package, not stdlib datetime. Confirm if actually used.
+  # "gensim==4.3.2",             # NLP, likely not core. If used, make optional.
+  # "nltk==3.8.1",               # NLP, likely not core. If used, make optional.
+  # "scikit-learn==1.4.1.post1", # ML, likely not core. If used, make optional.
+  # "scipy==1.12",               # Often a dep of numpy/skimage, let them pull it if needed or add if directly used.
+  # "textblob==0.17.1",          # NLP, likely not core. If used, make optional.
+  # "torch==2.2.0",              # ML, definitely not core for basic downloader. Make optional.
+  # "transformers==4.37.2",      # ML, definitely not core. Make optional.
+
+  # ---- Build tools for other packages - NOT direct runtime dependencies of AdDownloader ----
+  # "meson==1.3.1",
+  # "ninja==1.11.1.1",
+
+  # ---- Testing - Should be in optional-dependencies (dev/test) ----
+  # "pytest>=6.2.4",
 ]
 
+[project.optional-dependencies]
+# Example of how you might structure optional dependencies in the future
+# docs = [
+#   "Sphinx",
+#   "sphinx-rtd-theme",
+#   # ... other docs requirements from docs/requirements.txt ...
+# ]
+# test = [
+#   "pytest>=6.2.4",
+# ]
+# dashboard = [
+#    "dash==2.15.0",
+#    # ... other dash related dependencies ...
+# ]
+# advanced_nlp = [
+#    "gensim==4.3.2",
+#    "nltk==3.8.1",
+#    "textblob==0.17.1",
+#    "torch==2.2.0",
+#    "transformers==4.37.2",
+# ]
 
 [project.urls]
 Homepage = "https://github.com/Paularossi/AdDownloader"
 Issues = "https://github.com/Paularossi/AdDownloader/issues"
 
-[project.scripts]  # Optional
-AdDownloader = "AdDownloader.cli:main"
+[project.scripts]
+# This points to the 'app' object (typer.Typer() instance)
+# in the 'AdDownloader/cli.py' module.
+AdDownloader = "AdDownloader.cli:app"
 
 [build-system]
-# These are the assumed default build requirements from pip:
-# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
 requires = ["setuptools>=43.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+# backend-path should NOT be present for standard setuptools backend
 
 [tool.setuptools.packages.find]
-exclude = ["data", "dist", "docs", "tests", "myenv", "output"]
+where = ["."] # Look in the current directory
+include = ["AdDownloader*"] # Include the AdDownloader package and its submodules
+exclude = ["data*", "dist*", "docs*", "tests*", "myenv*", "output*"]
 namespaces = false
